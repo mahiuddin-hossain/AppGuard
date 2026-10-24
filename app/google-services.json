@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "665237331656",
+    "project_id": "appguard-2767c",
+    "storage_bucket": "appguard-2767c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665237331656:android:55cfadc111e0a836ef0ffd",
+        "android_client_info": {
+          "package_name": "com.mahiuddin.appguard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjz2-EeiR7V9Yy3bzPrZ08xeiHeN926fE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
