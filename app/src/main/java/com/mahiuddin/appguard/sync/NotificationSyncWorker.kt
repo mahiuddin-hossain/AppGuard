@@ -30,37 +30,43 @@ class NotificationSyncWorker(
                 return Result.success()
             }
 
+            // Ensure auth if configured, but proceed with upload attempt regardless
             val uid = syncManager.ensureAuthenticatedUserUid()
-            if (uid == null) {
-                Log.w(TAG, "User authentication failed or unavailable. Scheduling retry.")
-                return Result.retry()
-            }
+            Log.d(TAG, "Auth check completed (UID: $uid)")
 
-            val pendingNotifications = repository.getPendingSyncNotifications(50)
-            if (pendingNotifications.isEmpty()) {
-                Log.d(TAG, "No pending notifications to sync.")
-                return Result.success()
-            }
-
-            Log.i(TAG, "Uploading ${pendingNotifications.size} pending notifications for user $uid")
-
+            var totalUploaded = 0
             var hasFailures = false
+            val deviceName = FirebaseSyncManager.getDisplayDeviceName()
 
-            for (notification in pendingNotifications) {
-                val success = syncManager.uploadNotificationRecord(uid, notification)
-                if (success) {
-                    repository.markAsSynced(notification.eventId, System.currentTimeMillis())
-                } else {
-                    hasFailures = true
-                    repository.updateSyncFailure(notification.eventId, "Cloud upload failed")
+            while (true) {
+                val pendingNotifications = repository.getPendingSyncNotifications(50)
+                if (pendingNotifications.isEmpty()) {
+                    break
+                }
+
+                Log.i(TAG, "Processing batch of ${pendingNotifications.size} unsynced notifications for device [$deviceName]")
+
+                for (notification in pendingNotifications) {
+                    val success = syncManager.uploadNotificationRecord(notification)
+                    if (success) {
+                        repository.markAsSynced(notification.eventId, System.currentTimeMillis())
+                        totalUploaded++
+                    } else {
+                        hasFailures = true
+                        repository.updateSyncFailure(notification.eventId, "Cloud upload failed")
+                    }
+                }
+
+                if (hasFailures) {
+                    break
                 }
             }
 
             if (hasFailures) {
-                Log.w(TAG, "Some notification records failed to upload. Retrying later.")
+                Log.w(TAG, "Some notification records failed to upload to Firestore. Retrying later.")
                 Result.retry()
             } else {
-                Log.i(TAG, "Successfully uploaded all pending notifications")
+                Log.i(TAG, "Successfully uploaded total $totalUploaded pending notifications for [$deviceName] to Firestore.")
                 Result.success()
             }
 

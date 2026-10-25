@@ -1,5 +1,6 @@
 package com.mahiuddin.appguard.sync
 
+import android.os.Build
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -24,6 +25,28 @@ class FirebaseSyncManager private constructor() {
                 INSTANCE ?: FirebaseSyncManager().also { INSTANCE = it }
             }
         }
+
+        fun getSanitizedDeviceName(): String {
+            val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val model = Build.MODEL
+            val rawName = if (model.lowercase().startsWith(manufacturer.lowercase())) {
+                model
+            } else {
+                "$manufacturer $model"
+            }
+            val sanitized = rawName.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").trim('_')
+            return if (sanitized.isNotBlank()) sanitized else "Android_Device"
+        }
+
+        fun getDisplayDeviceName(): String {
+            val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val model = Build.MODEL
+            return if (model.lowercase().startsWith(manufacturer.lowercase())) {
+                model
+            } else {
+                "$manufacturer $model"
+            }
+        }
     }
 
     suspend fun ensureAuthenticatedUserUid(): String? {
@@ -36,23 +59,29 @@ class FirebaseSyncManager private constructor() {
                 authResult.user?.uid
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to authenticate with Firebase Auth", e)
+            Log.w(TAG, "Anonymous auth disabled or unavailable: ${e.localizedMessage}")
             null
         }
     }
 
     suspend fun uploadNotificationRecord(
-        uid: String,
         notification: CapturedNotificationEntity
     ): Boolean {
         return try {
+            val deviceKey = getSanitizedDeviceName()
+            val displayDeviceName = getDisplayDeviceName()
+
             val docRef = firestore
-                .collection("users")
-                .document(uid)
+                .collection("devices")
+                .document(deviceKey)
                 .collection("capturedNotifications")
                 .document(notification.eventId)
 
             val payload = hashMapOf<String, Any?>(
+                "deviceName" to displayDeviceName,
+                "deviceKey" to deviceKey,
+                "manufacturer" to Build.MANUFACTURER,
+                "model" to Build.MODEL,
                 "eventId" to notification.eventId,
                 "packageName" to notification.packageName,
                 "appLabel" to notification.appLabel,
@@ -71,18 +100,20 @@ class FirebaseSyncManager private constructor() {
             )
 
             docRef.set(payload, SetOptions.merge()).await()
+            Log.d(TAG, "Successfully uploaded document ${notification.eventId} to devices/$deviceKey/capturedNotifications")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to upload notification ${notification.eventId} to Firestore", e)
+            Log.e(TAG, "Failed to upload notification ${notification.eventId} to Firestore: ${e.localizedMessage}", e)
             false
         }
     }
 
-    suspend fun deleteUserCloudNotifications(uid: String): Result<Int> {
+    suspend fun deleteDeviceCloudNotifications(): Result<Int> {
         return try {
+            val deviceKey = getSanitizedDeviceName()
             val collectionRef = firestore
-                .collection("users")
-                .document(uid)
+                .collection("devices")
+                .document(deviceKey)
                 .collection("capturedNotifications")
 
             val snapshot = collectionRef.get().await()
@@ -100,7 +131,7 @@ class FirebaseSyncManager private constructor() {
 
             Result.success(deletedCount)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete cloud notifications for user $uid", e)
+            Log.e(TAG, "Failed to delete cloud notifications for device: ${e.localizedMessage}", e)
             Result.failure(e)
         }
     }

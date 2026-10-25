@@ -2,7 +2,6 @@ package com.mahiuddin.appguard.service
 
 import android.app.Notification
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -20,6 +19,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AppNotificationListenerService : NotificationListenerService() {
 
@@ -28,6 +30,9 @@ class AppNotificationListenerService : NotificationListenerService() {
 
     @Volatile
     private var isCaptureEnabled: Boolean = false
+
+    @Volatile
+    private var isCaptureAllAppsEnabled: Boolean = false
 
     @Volatile
     private var selectedPackages: Set<String> = emptySet()
@@ -52,6 +57,17 @@ class AppNotificationListenerService : NotificationListenerService() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error collecting isCaptureEnabledFlow", e)
+            }
+        }
+
+        serviceScope.launch {
+            try {
+                repository.isCaptureAllAppsEnabledFlow.collect { enabled ->
+                    Log.d(TAG, "isCaptureAllAppsEnabledFlow emitted enabled=$enabled")
+                    isCaptureAllAppsEnabled = enabled
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error collecting isCaptureAllAppsEnabledFlow", e)
             }
         }
 
@@ -91,8 +107,8 @@ class AppNotificationListenerService : NotificationListenerService() {
                 return
             }
 
-            // Verify if package is selected for capture
-            if (!selectedPackages.contains(sourcePackage)) {
+            // If Capture All Apps is OFF, verify if package is explicitly selected
+            if (!isCaptureAllAppsEnabled && !selectedPackages.contains(sourcePackage)) {
                 return
             }
 
@@ -124,7 +140,7 @@ class AppNotificationListenerService : NotificationListenerService() {
             val appLabel = appInfo.label
 
             val rawIdentity = "$sourcePackage|$notificationKey|$postedAt|$title|$message"
-            val eventId = generateHashId(rawIdentity)
+            val eventId = generateReadableEventId(postedAt, rawIdentity)
 
             val entity = CapturedNotificationEntity(
                 eventId = eventId,
@@ -170,12 +186,19 @@ class AppNotificationListenerService : NotificationListenerService() {
         try {
             runBlocking(Dispatchers.IO) {
                 isCaptureEnabled = repository.isCaptureEnabledFlow.first()
+                isCaptureAllAppsEnabled = repository.isCaptureAllAppsEnabledFlow.first()
                 selectedPackages = repository.selectedPackagesFlow.first()
             }
-            Log.d(TAG, "Loaded initial state: isCaptureEnabled=$isCaptureEnabled, selectedPackagesCount=${selectedPackages.size}")
+            Log.d(TAG, "Loaded initial state: isCaptureEnabled=$isCaptureEnabled, isCaptureAllApps=$isCaptureAllAppsEnabled, selectedCount=${selectedPackages.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading initial DataStore state for NotificationListener", e)
         }
+    }
+
+    private fun generateReadableEventId(postedAt: Long, input: String): String {
+        val datePrefix = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date(if (postedAt > 0) postedAt else System.currentTimeMillis()))
+        val shortHash = generateHashId(input).take(8)
+        return "${datePrefix}_$shortHash"
     }
 
     private fun generateHashId(input: String): String {

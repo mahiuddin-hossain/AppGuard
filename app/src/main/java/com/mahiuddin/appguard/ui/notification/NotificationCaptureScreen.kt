@@ -27,13 +27,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
@@ -96,6 +92,7 @@ fun NotificationCaptureScreen(
     val context = LocalContext.current
 
     val isCaptureEnabled by viewModel.isCaptureEnabled.collectAsState()
+    val isCaptureAllAppsEnabled by viewModel.isCaptureAllAppsEnabled.collectAsState()
     val isListenerPermissionGranted by viewModel.isListenerPermissionGranted.collectAsState()
     val isCloudSyncEnabled by viewModel.isCloudSyncEnabled.collectAsState()
     val selectedPackages by viewModel.selectedPackages.collectAsState()
@@ -149,7 +146,16 @@ fun NotificationCaptureScreen(
                     isCaptureEnabled = isCaptureEnabled,
                     isPermissionGranted = isListenerPermissionGranted,
                     selectedAppCount = selectedPackages.size,
+                    isCaptureAllApps = isCaptureAllAppsEnabled,
                     onToggleCapture = { viewModel.setCaptureEnabled(it) }
+                )
+            }
+
+            // Capture All Apps Switch Card
+            item {
+                CaptureAllAppsCard(
+                    isCaptureAllAppsEnabled = isCaptureAllAppsEnabled,
+                    onToggle = { viewModel.setCaptureAllAppsEnabled(it) }
                 )
             }
 
@@ -164,12 +170,14 @@ fun NotificationCaptureScreen(
                 )
             }
 
-            // Selected Target Apps Section
-            item {
-                TargetAppsSection(
-                    selectedPackageCount = selectedPackages.size,
-                    onOpenSelectApps = { viewModel.openSelectAppsDialog() }
-                )
+            // Selected Target Apps Section (Only show if Capture All Apps is OFF)
+            if (!isCaptureAllAppsEnabled) {
+                item {
+                    TargetAppsSection(
+                        selectedPackageCount = selectedPackages.size,
+                        onOpenSelectApps = { viewModel.openSelectAppsDialog() }
+                    )
+                }
             }
 
             // History & Data Management Section
@@ -225,7 +233,7 @@ fun NotificationCaptureScreen(
         AlertDialog(
             onDismissRequest = { viewModel.closeDeleteCloudDialog() },
             title = { Text("Delete Cloud Records", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to delete all notification records stored in Cloud Firestore for your user account?") },
+            text = { Text("Are you sure you want to delete all notification records stored in Cloud Firestore for this device?") },
             confirmButton = {
                 Button(
                     onClick = { viewModel.confirmDeleteCloudHistory() },
@@ -350,6 +358,7 @@ fun CaptureControlCard(
     isCaptureEnabled: Boolean,
     isPermissionGranted: Boolean,
     selectedAppCount: Int,
+    isCaptureAllApps: Boolean,
     onToggleCapture: (Boolean) -> Unit
 ) {
     Card(
@@ -372,7 +381,9 @@ fun CaptureControlCard(
                 Column {
                     Text("Capture Service", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PrimaryText)
                     Text(
-                        text = if (isCaptureEnabled) "Capturing notifications for $selectedAppCount apps" else "Capture is turned off",
+                        text = if (isCaptureEnabled) {
+                            if (isCaptureAllApps) "Capturing notifications for ALL apps" else "Capturing notifications for $selectedAppCount apps"
+                        } else "Capture is turned off",
                         fontSize = 13.sp,
                         color = SecondaryText
                     )
@@ -404,6 +415,64 @@ fun CaptureControlCard(
                         fontWeight = FontWeight.Medium
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CaptureAllAppsCard(
+    isCaptureAllAppsEnabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCaptureAllAppsEnabled) LightGreenSurface else MainBackground
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Capture All Notifications",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryText
+                    )
+                    Text(
+                        text = if (isCaptureAllAppsEnabled)
+                            "Capturing notifications from ALL apps on the device"
+                        else
+                            "Capture notifications only from selected target apps",
+                        fontSize = 13.sp,
+                        color = SecondaryText
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Switch(
+                    checked = isCaptureAllAppsEnabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = PrimaryGreen,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = SubtleBorder
+                    )
+                )
             }
         }
     }

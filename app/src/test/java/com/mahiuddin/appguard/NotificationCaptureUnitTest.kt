@@ -7,6 +7,9 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class NotificationCaptureUnitTest {
 
@@ -25,6 +28,18 @@ class NotificationCaptureUnitTest {
     }
 
     @Test
+    fun testReadableEventIdGeneration_containsFormattedDate() {
+        val timestamp = 1761305933000L // Oct 24, 2025
+        val input = "com.whatsapp|key1|$timestamp|Hello|World"
+
+        val readableEventId = generateReadableEventId(timestamp, input)
+        val datePrefix = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date(timestamp))
+
+        assertTrue(readableEventId.startsWith(datePrefix))
+        assertTrue(readableEventId.contains("_"))
+    }
+
+    @Test
     fun testPackageFiltering_onlyCapturesSelectedPackages() {
         val selectedPackages = setOf("com.whatsapp", "com.instagram.android")
 
@@ -37,7 +52,7 @@ class NotificationCaptureUnitTest {
     @Test
     fun testCapturedNotificationEntity_defaultSyncStatusIsPending() {
         val entity = CapturedNotificationEntity(
-            eventId = "test_event_123",
+            eventId = "2026-10-24_11-38-53_a1b2c3d4",
             packageName = "com.whatsapp",
             appLabel = "WhatsApp",
             title = "John",
@@ -48,6 +63,12 @@ class NotificationCaptureUnitTest {
         assertEquals("PENDING", entity.syncStatus)
         assertEquals(0, entity.syncAttempts)
         assertEquals(null, entity.syncedAt)
+    }
+
+    private fun generateReadableEventId(postedAt: Long, input: String): String {
+        val datePrefix = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date(if (postedAt > 0) postedAt else System.currentTimeMillis()))
+        val shortHash = generateHashId(input).take(8)
+        return "${datePrefix}_$shortHash"
     }
 
     private fun generateHashId(input: String): String {

@@ -12,7 +12,7 @@ interface CapturedNotificationDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertOrIgnore(notification: CapturedNotificationEntity): Long
 
-    @Query("SELECT * FROM captured_notifications WHERE syncStatus = 'PENDING' ORDER BY postedAt ASC LIMIT :limit")
+    @Query("SELECT * FROM captured_notifications WHERE syncStatus IS NULL OR syncStatus != 'SYNCED' ORDER BY postedAt ASC LIMIT :limit")
     suspend fun getPendingSyncNotifications(limit: Int = 50): List<CapturedNotificationEntity>
 
     @Query("UPDATE captured_notifications SET syncStatus = 'SYNCED', syncedAt = :syncedAt, lastSyncError = NULL WHERE eventId = :eventId")
@@ -27,7 +27,7 @@ interface CapturedNotificationDao {
     @Query("SELECT * FROM captured_notifications WHERE packageName LIKE '%' || :query || '%' OR appLabel LIKE '%' || :query || '%' OR title LIKE '%' || :query || '%' OR message LIKE '%' || :query || '%' ORDER BY postedAt DESC LIMIT :limit OFFSET :offset")
     fun searchNotificationsPaged(query: String, limit: Int, offset: Int): Flow<List<CapturedNotificationEntity>>
 
-    @Query("SELECT COUNT(*) FROM captured_notifications WHERE syncStatus = 'PENDING'")
+    @Query("SELECT COUNT(*) FROM captured_notifications WHERE syncStatus IS NULL OR syncStatus != 'SYNCED'")
     fun getPendingCountFlow(): Flow<Int>
 
     @Query("SELECT MAX(syncedAt) FROM captured_notifications WHERE syncStatus = 'SYNCED'")

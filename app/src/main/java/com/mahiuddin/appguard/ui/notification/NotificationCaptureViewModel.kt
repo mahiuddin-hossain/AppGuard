@@ -9,6 +9,7 @@ import com.mahiuddin.appguard.data.NotificationRepository
 import com.mahiuddin.appguard.data.db.CapturedNotificationEntity
 import com.mahiuddin.appguard.service.AppNotificationListenerService
 import com.mahiuddin.appguard.sync.FirebaseSyncManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +27,9 @@ class NotificationCaptureViewModel(application: Application) : AndroidViewModel(
     private val firebaseSyncManager = FirebaseSyncManager.getInstance()
 
     val isCaptureEnabled: StateFlow<Boolean> = notificationRepository.isCaptureEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val isCaptureAllAppsEnabled: StateFlow<Boolean> = notificationRepository.isCaptureAllAppsEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isCloudSyncEnabled: StateFlow<Boolean> = notificationRepository.isCloudSyncEnabledFlow
@@ -117,6 +121,12 @@ class NotificationCaptureViewModel(application: Application) : AndroidViewModel(
         }
     }
 
+    fun setCaptureAllAppsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            notificationRepository.setCaptureAllAppsEnabled(enabled)
+        }
+    }
+
     fun setCloudSyncEnabled(enabled: Boolean) {
         viewModelScope.launch {
             notificationRepository.setCloudSyncEnabled(enabled)
@@ -173,17 +183,10 @@ class NotificationCaptureViewModel(application: Application) : AndroidViewModel(
 
     fun confirmDeleteCloudHistory() {
         viewModelScope.launch {
-            val uid = firebaseSyncManager.ensureAuthenticatedUserUid()
-            if (uid == null) {
-                _userMessage.value = "Failed to authenticate for cloud deletion."
-                _isDeleteCloudDialogOpen.value = false
-                return@launch
-            }
-
-            val result = firebaseSyncManager.deleteUserCloudNotifications(uid)
+            val result = firebaseSyncManager.deleteDeviceCloudNotifications()
             if (result.isSuccess) {
                 val count = result.getOrDefault(0)
-                _userMessage.value = "Deleted $count cloud notification records."
+                _userMessage.value = "Deleted $count cloud notification records for this device."
             } else {
                 _userMessage.value = "Cloud deletion failed: ${result.exceptionOrNull()?.localizedMessage}"
             }
@@ -192,8 +195,11 @@ class NotificationCaptureViewModel(application: Application) : AndroidViewModel(
     }
 
     fun triggerSyncNow() {
-        notificationRepository.triggerSyncWork()
-        _userMessage.value = "Cloud sync triggered."
+        viewModelScope.launch(Dispatchers.IO) {
+            notificationRepository.triggerSyncWork()
+            val count = notificationRepository.forceSyncAllPendingNow()
+            _userMessage.value = if (count > 0) "Uploaded $count notification records to Firestore." else "Cloud sync triggered."
+        }
     }
 
     fun clearUserMessage() {
