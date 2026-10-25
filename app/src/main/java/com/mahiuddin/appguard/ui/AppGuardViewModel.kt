@@ -6,12 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.mahiuddin.appguard.data.AppBlockRepository
 import com.mahiuddin.appguard.data.AppInfo
 import com.mahiuddin.appguard.data.InstalledAppsRepository
+import com.mahiuddin.appguard.data.db.BlockedAppEntity
 import com.mahiuddin.appguard.service.AppBlockAccessibilityService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -79,14 +81,30 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
         initialValue = emptyList()
     )
 
-    // Resolved AppInfo for currently blocked packages
+    // Resolved AppInfo for currently blocked packages using Room Database entities
     val blockedAppsList: StateFlow<List<AppInfo>> = combine(
-        blockedPackages,
+        repository.blockedAppEntitiesFlow,
         _installedApps
-    ) { blockedPkgs, allApps ->
-        val appMap = allApps.associateBy { it.packageName }
-        blockedPkgs.map { pkg ->
-            appMap[pkg] ?: installedAppsRepository.getCachedOrFetchAppInfo(pkg)
+    ) { entities, installedApps ->
+        val appMap = installedApps.associateBy { it.packageName }
+        entities.map { entity ->
+            val installedApp = appMap[entity.packageName]
+            if (installedApp != null) {
+                AppInfo(
+                    packageName = entity.packageName,
+                    label = entity.label,
+                    icon = installedApp.icon,
+                    isSystemApp = installedApp.isSystemApp
+                )
+            } else {
+                val cachedInfo = installedAppsRepository.getCachedOrFetchAppInfo(entity.packageName)
+                AppInfo(
+                    packageName = entity.packageName,
+                    label = entity.label,
+                    icon = cachedInfo.icon,
+                    isSystemApp = false
+                )
+            }
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
     }.stateIn(
         scope = viewModelScope,
@@ -122,7 +140,7 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
 
     fun removeBlockedApp(packageName: String) {
         viewModelScope.launch {
-            repository.removePackage(packageName)
+            repository.removeBlockedApp(packageName)
         }
     }
 
@@ -153,7 +171,22 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
 
     fun confirmPackageSelectionInSheet() {
         viewModelScope.launch {
-            repository.setBlockedPackages(_selectedPackagesInSheet.value)
+            val selectedSet = _selectedPackagesInSheet.value
+            val installedMap = _installedApps.value.associateBy { it.packageName }
+            val currentEntitiesMap = repository.blockedAppEntitiesFlow.firstOrNull()?.associateBy { it.packageName } ?: emptyMap()
+
+            val newEntitiesList = selectedSet.map { pkg ->
+                val installed = installedMap[pkg]
+                val existing = currentEntitiesMap[pkg]
+                val label = installed?.label ?: existing?.label ?: installedAppsRepository.getCachedOrFetchAppInfo(pkg).label
+                BlockedAppEntity(
+                    packageName = pkg,
+                    label = label,
+                    isCustom = existing?.isCustom ?: (installed == null)
+                )
+            }
+
+            repository.setBlockedApps(newEntitiesList)
             _isAddAppsSheetOpen.value = false
         }
     }
@@ -195,12 +228,25 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
         }
 
         viewModelScope.launch {
-            repository.addPackage(trimmed)
+            val installedApp = installedAppsRepository.getCachedOrFetchAppInfo(trimmed)
+            val label = if (installedApp.label.isNotEmpty() && installedApp.label != trimmed) {
+                installedApp.label
+            } else {
+                trimmed
+            }
+
+            repository.addBlockedApp(
+                packageName = trimmed,
+                label = label,
+                isCustom = true
+            )
+
             if (_isAddAppsSheetOpen.value) {
                 val current = _selectedPackagesInSheet.value.toMutableSet()
                 current.add(trimmed)
                 _selectedPackagesInSheet.value = current
             }
+
             closeCustomPackageDialog()
             refreshInstalledApps(force = true)
         }

@@ -7,14 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [CapturedNotificationEntity::class],
-    version = 1,
+    entities = [CapturedNotificationEntity::class, BlockedAppEntity::class],
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(RoomConverters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun capturedNotificationDao(): CapturedNotificationDao
+    abstract fun blockedAppDao(): BlockedAppDao
 
     companion object {
         @Volatile

@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.mahiuddin.appguard.data.db.AppDatabase
+import com.mahiuddin.appguard.data.db.BlockedAppEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -16,6 +18,8 @@ import java.io.IOException
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_guard_preferences")
 
 class AppBlockRepository private constructor(private val context: Context) {
+
+    private val blockedAppDao = AppDatabase.getInstance(context).blockedAppDao()
 
     companion object {
         private val KEY_BLOCKED_PACKAGES = stringSetPreferencesKey("blocked_packages")
@@ -30,6 +34,8 @@ class AppBlockRepository private constructor(private val context: Context) {
             }
         }
     }
+
+    val blockedAppEntitiesFlow: Flow<List<BlockedAppEntity>> = blockedAppDao.getAllBlockedAppsFlow()
 
     val blockedPackagesFlow: Flow<Set<String>> = context.dataStore.data
         .catch { exception ->
@@ -55,23 +61,39 @@ class AppBlockRepository private constructor(private val context: Context) {
             preferences[KEY_IS_BLOCKING_ENABLED] ?: true
         }
 
-    suspend fun addPackage(packageName: String) {
+    suspend fun addBlockedApp(packageName: String, label: String, isCustom: Boolean = false) {
+        val entity = BlockedAppEntity(
+            packageName = packageName,
+            label = label,
+            isCustom = isCustom
+        )
+        blockedAppDao.insertOrUpdate(entity)
+
         context.dataStore.edit { preferences ->
             val current = preferences[KEY_BLOCKED_PACKAGES] ?: emptySet()
             preferences[KEY_BLOCKED_PACKAGES] = current + packageName
         }
     }
 
-    suspend fun removePackage(packageName: String) {
+    suspend fun removeBlockedApp(packageName: String) {
+        blockedAppDao.deleteByPackageName(packageName)
+
         context.dataStore.edit { preferences ->
             val current = preferences[KEY_BLOCKED_PACKAGES] ?: emptySet()
             preferences[KEY_BLOCKED_PACKAGES] = current - packageName
         }
     }
 
-    suspend fun setBlockedPackages(packages: Set<String>) {
+    suspend fun setBlockedApps(apps: List<BlockedAppEntity>) {
+        if (apps.isEmpty()) {
+            blockedAppDao.deleteAll()
+        } else {
+            blockedAppDao.insertOrUpdateAll(apps)
+            blockedAppDao.deleteNotInSet(apps.map { it.packageName })
+        }
+
         context.dataStore.edit { preferences ->
-            preferences[KEY_BLOCKED_PACKAGES] = packages
+            preferences[KEY_BLOCKED_PACKAGES] = apps.map { it.packageName }.toSet()
         }
     }
 
