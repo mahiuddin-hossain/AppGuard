@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.mahiuddin.appguard.data.db.AppDatabase
@@ -24,6 +25,8 @@ class AppBlockRepository private constructor(private val context: Context) {
     companion object {
         private val KEY_BLOCKED_PACKAGES = stringSetPreferencesKey("blocked_packages")
         private val KEY_IS_BLOCKING_ENABLED = booleanPreferencesKey("is_blocking_enabled")
+        private val KEY_IS_UNINSTALL_PROTECTION_ENABLED = booleanPreferencesKey("is_uninstall_protection_enabled")
+        private val KEY_PARENT_PIN = stringPreferencesKey("parent_pin")
 
         @Volatile
         private var INSTANCE: AppBlockRepository? = null
@@ -60,6 +63,14 @@ class AppBlockRepository private constructor(private val context: Context) {
         .map { preferences ->
             preferences[KEY_IS_BLOCKING_ENABLED] ?: true
         }
+
+    val isUninstallProtectionEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[KEY_IS_UNINSTALL_PROTECTION_ENABLED] ?: false }
+
+    val parentPinFlow: Flow<String?> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { preferences -> preferences[KEY_PARENT_PIN] }
 
     suspend fun addBlockedApp(packageName: String, label: String, isCustom: Boolean = false) {
         val entity = BlockedAppEntity(
@@ -100,6 +111,18 @@ class AppBlockRepository private constructor(private val context: Context) {
     suspend fun setBlockingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_IS_BLOCKING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setUninstallProtectionEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_IS_UNINSTALL_PROTECTION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setParentPin(pin: String) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_PARENT_PIN] = pin
         }
     }
 }

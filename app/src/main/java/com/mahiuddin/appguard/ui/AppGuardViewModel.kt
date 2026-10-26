@@ -29,6 +29,20 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
             initialValue = true
         )
 
+    val isUninstallProtectionEnabled: StateFlow<Boolean> = repository.isUninstallProtectionEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    val parentPin: StateFlow<String?> = repository.parentPinFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     val blockedPackages: StateFlow<Set<String>> = repository.blockedPackagesFlow
         .stateIn(
             scope = viewModelScope,
@@ -135,6 +149,18 @@ class AppGuardViewModel(application: Application) : AndroidViewModel(application
     fun setBlockingEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repository.setBlockingEnabled(enabled)
+        }
+    }
+
+    fun setUninstallProtectionEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setUninstallProtectionEnabled(enabled)
+        }
+    }
+
+    fun setParentPin(pin: String) {
+        viewModelScope.launch {
+            repository.setParentPin(pin)
         }
     }
 

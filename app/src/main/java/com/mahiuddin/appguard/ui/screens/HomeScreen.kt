@@ -1,5 +1,7 @@
 package com.mahiuddin.appguard.ui.screens
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -72,6 +74,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.mahiuddin.appguard.data.AppInfo
+import com.mahiuddin.appguard.receiver.AppGuardDeviceAdminReceiver
 import com.mahiuddin.appguard.ui.AppGuardViewModel
 import com.mahiuddin.appguard.ui.theme.DarkGreen
 import com.mahiuddin.appguard.ui.theme.LightGreenSurface
@@ -88,6 +91,7 @@ fun HomeScreen(viewModel: AppGuardViewModel) {
     val context = LocalContext.current
 
     val isBlockingEnabled by viewModel.isBlockingEnabled.collectAsState()
+    val isUninstallProtectionEnabled by viewModel.isUninstallProtectionEnabled.collectAsState()
     val isAccessibilityEnabled by viewModel.isAccessibilityEnabled.collectAsState()
     val blockedAppsList by viewModel.blockedAppsList.collectAsState()
     val isAddAppsSheetOpen by viewModel.isAddAppsSheetOpen.collectAsState()
@@ -131,6 +135,28 @@ fun HomeScreen(viewModel: AppGuardViewModel) {
                     blockedCount = blockedAppsList.size,
                     onToggleBlocking = { enabled ->
                         viewModel.setBlockingEnabled(enabled)
+                    }
+                )
+            }
+
+            // Uninstall Protection Card
+            item {
+                UninstallProtectionCard(
+                    isUninstallProtectionEnabled = isUninstallProtectionEnabled,
+                    onToggleProtection = { viewModel.setUninstallProtectionEnabled(it) },
+                    onOpenDeviceAdminSettings = {
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(
+                                DevicePolicyManager.EXTRA_DEVICE_ADMIN,
+                                ComponentName(context, AppGuardDeviceAdminReceiver::class.java)
+                            )
+                            putExtra(
+                                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "Activate Device Administrator rights to prevent unauthorized uninstallation of AppGuard."
+                            )
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
                     }
                 )
             }
@@ -438,6 +464,94 @@ fun BlockingControlCard(
                         color = StatusRed,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UninstallProtectionCard(
+    isUninstallProtectionEnabled: Boolean,
+    onToggleProtection: (Boolean) -> Unit,
+    onOpenDeviceAdminSettings: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUninstallProtectionEnabled) LightGreenSurface else MainBackground
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Uninstall Protection",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryText
+                    )
+                    Text(
+                        text = if (isUninstallProtectionEnabled)
+                            "Blocks uninstallation & permission deactivation attempts"
+                        else
+                            "Prevent unauthorized uninstallation by children",
+                        fontSize = 13.sp,
+                        color = SecondaryText
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Switch(
+                    checked = isUninstallProtectionEnabled,
+                    onCheckedChange = onToggleProtection,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = PrimaryGreen,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = SubtleBorder
+                    )
+                )
+            }
+
+            if (isUninstallProtectionEnabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = SubtleBorder)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Device Admin Protection",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PrimaryText
+                    )
+
+                    OutlinedButton(
+                        onClick = onOpenDeviceAdminSettings,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryGreen),
+                        border = BorderStroke(1.dp, PrimaryGreen)
+                    ) {
+                        Text("Device Admin", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

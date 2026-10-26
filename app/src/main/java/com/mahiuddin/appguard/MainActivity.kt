@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         appGuardViewModel.refreshAllData()
+        dnsBlockViewModel.refreshAccessibilityStatus()
         notificationViewModel.refreshAllData()
     }
 }
